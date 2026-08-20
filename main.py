@@ -1,10 +1,7 @@
-"""BeauHoroscope — production entrypoint.
+"""BeauHoroscope — production entrypoint."""
 
-This file is generated from the current BeauHoroscope pipeline and includes:
-- deterministic PyEphem snapshot;
-- validated LLM horoscope generation;
-- reliable scheduled publication;
-- daily astrology-focused Content Engine with SQLite uniqueness history.
-"""
+# Source: horoscope_free_pipeline_v9_content_engine.py
+# The complete production pipeline is kept in this single entrypoint so the
+# existing server systemd unit can execute /opt/horoscope-bot/main.py.
 
 PLACEHOLDER
