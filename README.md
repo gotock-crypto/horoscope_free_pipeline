@@ -1,24 +1,22 @@
 # 🔮 BeauHoroscope — Telegram-бот астропрогнозов
 
-Бесплатный Telegram-пайплайн для ежедневных гороскопов на русском языке.
+Бесплатный production-пайплайн ежедневных астропрогнозов на русском языке.
 
-Проект сочетает **реальные астрономические эфемериды**, рассчитанные локально через PyEphem, и LLM через **Hugging Face Inference Providers**.
+## Production 4.0
 
-## Возможности
+Текущий production entrypoint — `main.py`.
 
-- 🌙 расчёт положения Луны и планет по эфемеридам;
-- ♈️ персонализированная интерпретация для всех 12 знаков зодиака;
-- 🔭 расчёт ретроградности и основных аспектов;
-- 🤖 генерация текста через Hugging Face;
-- 🛡️ проверка ответа LLM: должны присутствовать все 12 знаков;
-- 📢 публикация готового красиво оформленного поста прямо в Telegram-канал;
-- 📅 планирование публикации на конкретную дату и время;
-- ⏰ ежедневный автопостинг;
-- 📋 просмотр и отмена запланированных публикаций;
-- 📊 простая статистика публикаций;
-- 🧪 команда `/llmtest` для проверки LLM;
-- 💾 SQLite для хранения публикаций, расписания и настроек;
-- 🔐 секреты не хранятся в исходном коде — используются переменные окружения.
+- реальные астрономические эфемериды рассчитываются локально через **PyEphem**;
+- LLM: **Groq / Qwen** как основной провайдер;
+- **Mistral** — fallback;
+- Hugging Face полностью исключён из runtime-пайплайна;
+- ежедневный гороскоп и Content Engine работают в одном Telegram-сервисе;
+- единый scheduler поддерживает автопостинг гороскопов и дополнительных астрологических материалов;
+- SQLite хранит историю, расписание, настройки и защищает от повторной публикации;
+- `/llmtest` проверяет Groq и Mistral независимо;
+- API-ключи хранятся только в `.env`/environment.
+
+> Production snapshot 4.0: `BeauHoroscope-4.0-groq-mistral.tar.gz`.
 
 ## Архитектура
 
@@ -29,27 +27,55 @@ PyEphem
 Астрономический snapshot
    │
    ▼
-Hugging Face Inference Providers
+Groq / Qwen
    │
-   ▼
-Валидация 12 знаков
-   │
-   ▼
-Красивый Telegram-пост
-   │
-   ├── публикация сейчас
-   ├── планировщик
-   └── ежедневный автопостинг
+   ├── success ──────────┐
+   │                     │
+   └── error/rate-limit  ▼
+           Mistral ─────► Validation
+                              │
+                              ▼
+                         Telegram
+                              │
+                 ┌────────────┴────────────┐
+                 ▼                         ▼
+          Daily Horoscope            Content Engine
+                 │                         │
+                 └──────── Scheduler ─────┘
 ```
 
-LLM **не рассчитывает эфемериды самостоятельно**. Фактические астрономические данные сначала рассчитываются локально, после чего передаются модели для интерпретации.
+LLM не рассчитывает эфемериды самостоятельно: фактический астрономический snapshot сначала строится локально, затем передаётся модели для редакционной интерпретации.
 
 ## Требования
 
 - Python 3.10+;
-- Telegram-бот;
-- права администратора у бота в целевом Telegram-канале;
-- Hugging Face User Access Token с доступом к Inference Providers.
+- Telegram-бот с правами публикации в канале;
+- Groq API key и/или Mistral API key.
+
+**HF Token не требуется.**
+
+## Переменные окружения
+
+```env
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHANNEL_ID=@tvoigoroskopchik
+ADMIN_CHAT_ID=...
+
+GROQ_API_KEY=...
+GROQ_MODEL=qwen/qwen3.6-27b
+GROQ_MAX_TOKENS=2200
+GROQ_TEMPERATURE=0.72
+
+MISTRAL_API_KEY=...
+MISTRAL_MODEL=mistral-small-latest
+MISTRAL_MAX_TOKENS=2200
+MISTRAL_TEMPERATURE=0.72
+
+LLM_TIMEOUT=90
+LLM_RETRIES_PER_PROVIDER=1
+```
+
+Не коммитьте `.env`, токены, SQLite-базы, логи и резервные копии.
 
 ## Установка
 
@@ -59,211 +85,52 @@ cd horoscope_free_pipeline
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
-
-## Переменные окружения
-
-Создайте `.env`:
-
-```env
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHANNEL_ID=@tvoigoroskopchik
-ADMIN_CHAT_ID=
-
-HF_TOKEN=
-HF_MODEL=Qwen/Qwen3-8B
-HF_PROVIDER=auto
-HF_MAX_TOKENS=2200
-HF_TEMPERATURE=0.72
-
-BOT_TIMEZONE=Europe/Moscow
-AUTO_POST_DEFAULT=0
-AUTO_POST_TIME=09:00
-DB_FILE=horoscopes.db
-```
-
-### Что означает `ADMIN_CHAT_ID`
-
-Это **числовой Telegram ID администратора**, которому доступна панель управления.
-
-После запуска можно отправить боту:
-
-```text
-/id
-```
-
-Бот вернёт ваш ID.
-
-## Hugging Face Token
-
-В настройках Hugging Face создайте **User Access Token**, которому разрешены вызовы Inference Providers.
-
-После этого добавьте его только в `.env`:
-
-```env
-HF_TOKEN=ваш_токен
-```
-
-Не добавляйте токен в Git, README, исходный код или логи.
-
-## Запуск
-
-```bash
-source venv/bin/activate
-python3 horoscope_free_pipeline_v7_adminpublish.py
-```
-
-## Команды администратора
-
-| Команда | Назначение |
-|---|---|
-| `/start` | открыть панель управления |
-| `/menu` | открыть панель управления |
-| `/id` | показать Telegram ID |
-| `/llmtest` | проверить доступность LLM |
-
-## Панель управления
-
-В панели доступны:
-
-### 🚀 Создать прогноз
-
-Выбираете дату:
-
-```text
-сегодня
-завтра
-19.08.2026
-```
-
-Бот рассчитывает эфемериды, генерирует прогноз и **сразу публикует готовый пост в канал**.
-
-### 📅 Запланировать
-
-Можно создать прогноз и указать точное время публикации, например:
-
-```text
-19.08.2026 09:00
-```
-
-Время интерпретируется в `BOT_TIMEZONE`.
-
-### 📋 Расписание
-
-Показывает запланированные публикации и позволяет отменить их.
-
-### ⏰ Автопостинг
-
-Можно включить ежедневную автоматическую публикацию и задать время, например `09:00`.
-
-### 📊 Статистика
-
-Показывает количество опубликованных, запланированных и неудачных публикаций.
-
-## Формат публикации
-
-Пост автоматически оформляется примерно так:
-
-```text
-🔮 АСТРОПРОГНОЗ
-19.08.2026
-
-🌙 Растущий серп • Луна в Скорпионе
-
-━━━━━━━━━━━━━━━━━━━━
-
-♈️ ОВЕН: ...
-♉️ ТЕЛЕЦ: ...
-...
-♓️ РЫБЫ: ...
-
-━━━━━━━━━━━━━━━━━━━━
-#гороскоп #астропрогноз #зодиак #луна
-```
-
-Название модели и технические данные **не публикуются в канале**.
-
-## Безопасность
-
-В репозитории не должны находиться:
-
-- `TELEGRAM_BOT_TOKEN`;
-- `HF_TOKEN`;
-- `ADMIN_CHAT_ID`, если вы не хотите публиковать его;
-- `.env`;
-- локальная SQLite-база;
-- резервные копии с секретами.
-
-Рекомендуемый `.gitignore`:
-
-```gitignore
-.env
-*.db
-*.sqlite
-*.sqlite3
-__pycache__/
-*.pyc
-venv/
-.venv/
-*.log
+python3 -m py_compile main.py
+python3 main.py
 ```
 
 ## systemd
 
-Для постоянного запуска на Ubuntu создайте `/etc/systemd/system/horoscope-bot.service`:
+Production-сервис запускает:
 
 ```ini
-[Unit]
-Description=Telegram Horoscope Bot
-After=network-online.target
-Wants=network-online.target
-
 [Service]
-Type=simple
 User=root
 WorkingDirectory=/opt/horoscope-bot
 EnvironmentFile=/opt/horoscope-bot/.env
 Environment="PATH=/opt/horoscope-bot/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/opt/horoscope-bot/venv/bin/python3 /opt/horoscope-bot/horoscope_free_pipeline_v7_adminpublish.py
+ExecStart=/opt/horoscope-bot/venv/bin/python3 /opt/horoscope-bot/main.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=horoscope-bot
-
-[Install]
-WantedBy=multi-user.target
 ```
 
-Затем:
+Проверка:
 
 ```bash
-systemctl daemon-reload
-systemctl enable horoscope-bot.service
-systemctl restart horoscope-bot.service
 systemctl status horoscope-bot.service --no-pager
-```
-
-Логи:
-
-```bash
 journalctl -u horoscope-bot.service -f
 ```
 
-## Проверка перед деплоем
+## Команды
 
-```bash
-python3 -m py_compile horoscope_free_pipeline_v7_adminpublish.py
-```
+- `/start` — панель администратора;
+- `/menu` — панель администратора;
+- `/id` — Telegram ID;
+- `/llmtest` — отдельная проверка Groq и Mistral.
 
-Проверить, что в исходнике нет случайно записанных секретов:
+Через панель можно создавать прогнозы вручную, планировать публикации, включать ежедневный автопостинг и управлять Content Engine.
 
-```bash
-grep -nEi 'TELEGRAM_BOT_TOKEN\s*=\s*["'"']?[0-9]{8,}:|HF_TOKEN\s*=\s*["'"'][^"'"']{20,}|sk-[A-Za-z0-9_-]{20,}' horoscope_free_pipeline_v7_adminpublish.py
-```
+## Важное ограничение бесплатного Groq
 
-Команда не должна находить реальные значения секретов.
+Бесплатный Groq может возвращать HTTP 429 при превышении TPM. В production 4.0 предусмотрен fallback на Mistral. Следующая оптимизация 4.1 — уменьшение размера LLM-запросов и более экономная стратегия повторов.
 
-## Важно
+## Безопасность
+
+Никогда не храните реальные значения `TELEGRAM_BOT_TOKEN`, `GROQ_API_KEY` или `MISTRAL_API_KEY` в Git. Если секрет был опубликован или раскрыт, его следует немедленно отозвать и перевыпустить.
+
+## Примечание
 
 Астрологические прогнозы являются развлекательной интерпретацией астрологических традиций и не являются научными предсказаниями будущего.
